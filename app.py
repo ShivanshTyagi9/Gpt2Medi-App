@@ -1,7 +1,4 @@
-import os
-import wave
 import requests
-import pyaudio
 import streamlit as st
 import google.generativeai as genai
 from dotenv import load_dotenv
@@ -18,12 +15,6 @@ GEN_MODEL = "gemini-2.0-flash"
 SYMPTOM_API_URL = "https://cosmic09-gpt2medi.hf.space/predict/symptoms"
 TREATMENT_API_URL = "https://cosmic09-gpt2medi.hf.space/predict/treatments"
 
-# Audio recording config
-FORMAT = pyaudio.paInt16
-CHANNELS = 1
-RATE = 44100
-CHUNK = 1024
-RECORD_SECONDS = 5
 
 # Gemini setup
 genai.configure(api_key=API_KEY)
