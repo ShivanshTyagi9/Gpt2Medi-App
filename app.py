@@ -20,7 +20,7 @@ def transcribe_audio(audio_path):
         model = genai.GenerativeModel('models/gemini-2.0-flash')
         
         response = model.generate_content(
-            ["Transcribe this audio verbatim into text. Include punctuation and capitalization.", audio_file]
+            ["The audio provided is a conversation between a doctor and a patient. Transcribe this audio verbatim into text and seperate out the dialogs of doctor and patient like a script. Include punctuation and capitalization.", audio_file]
         )
         return response.text
     except Exception as e:
