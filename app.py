@@ -34,6 +34,7 @@ audio_bytes = audio_recorder(
     recording_color="#e8b62c",
     neutral_color="#6aa36f",
     icon_size="2x",
+    pause_threshold=10.0,
 )
 
 if audio_bytes:
