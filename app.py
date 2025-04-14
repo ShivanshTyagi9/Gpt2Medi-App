@@ -1,92 +1,66 @@
-import requests
 import streamlit as st
+from audio_recorder_streamlit import audio_recorder
 import google.generativeai as genai
+import os
 from dotenv import load_dotenv
-from audiorecorder import audiorecorder
-from io import BytesIO
 
 # Load environment variables
 load_dotenv()
 
-# ======================= CONFIG ==========================
-API_KEY = st.secrets["GOOGLE_API_KEY"]
-AUDIO_FILENAME = "recorded_audio.wav"
-GEN_MODEL = "gemini-2.0-flash"
-SYMPTOM_API_URL = "https://cosmic09-gpt2medi.hf.space/predict/symptoms"
-TREATMENT_API_URL = "https://cosmic09-gpt2medi.hf.space/predict/treatments"
+# Configure Gemini
+genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 
-
-# Gemini setup
-genai.configure(api_key=API_KEY)
-model = genai.GenerativeModel(GEN_MODEL)
-
-# ======================= Functions ==========================
-def record_audio():
-    audio_bytes = audiorecorder()
-    return audio_bytes
-
-def transcribe_audio(audio):
-    if audio is not None:
-        st.audio(audio, format="audio/wav")
-
-        # Send directly to Gemini
-        prompt = {"text": "Extract out the disease stated in the audio"}
-        audio_data = {
-            "mime_type": "audio/wav",
-            "data": audio
-        }
-
-    prompt = {"text": "Extract out the disease stated in the audio"}
-    response = model.generate_content(contents=[prompt, audio_data])
-
-    return response.text.strip() if response and hasattr(response, "text") else "❌ Transcription failed."
-
-def send_symptom_query(disease_name):
+def transcribe_audio(audio_path):
+    """Send audio to Gemini for transcription"""
     try:
-        response = requests.post(SYMPTOM_API_URL, json={"disease": disease_name})
-        if response.status_code == 200:
-            return response.json().get("response", "No symptom response found.")
-        return f"FastAPI Error {response.status_code}:\n{response.text}"
-    except requests.exceptions.RequestException as e:
-        return f"❌ Request failed: {e}"
+        # Upload audio file to Gemini
+        audio_file = genai.upload_file(audio_path)
+        
+        # Use Gemini Pro model
+        model = genai.GenerativeModel('models/gemini-2.0-flash')
+        
+        response = model.generate_content(
+            ["Transcribe this audio verbatim into text. Include punctuation and capitalization.", audio_file]
+        )
+        return response.text
+    except Exception as e:
+        return f"Error: {str(e)}"
 
-def send_treatment_query(disease_name):
-    try:
-        response = requests.post(TREATMENT_API_URL, json={"disease": disease_name})
-        if response.status_code == 200:
-            return response.json().get("treatments", "No treatments found.")
-        return f"FastAPI Error {response.status_code}:\n{response.text}"
-    except requests.exceptions.RequestException as e:
-        return f"❌ Request failed: {e}"
+st.title("Voice Recorder with Gemini Transcription")
 
-# ======================= Streamlit UI ==========================
+# Audio recorder
+audio_bytes = audio_recorder(
+    text="Click to record",
+    recording_color="#e8b62c",
+    neutral_color="#6aa36f",
+    icon_size="2x",
+)
 
-st.set_page_config(page_title="🎙️ GPT-2 Medi", layout="centered")
-st.title("🎙️ GPT-2 Medi Voice Diagnosis")
-
-if st.button("Start Voice Diagnosis 🎤"):
-    with st.spinner("Recording audio..."):
-        audio = record_audio()
-
-    with st.spinner("Transcribing disease from audio..."):
-        disease = transcribe_audio(audio)
-
-    st.subheader("📄 Transcription")
-    st.text_area("Disease Mentioned", disease, height=100)
-
-    with st.spinner("Fetching symptoms..."):
-        symptoms = send_symptom_query(disease)
-
-    st.subheader("🧬 Symptoms Analysis")
-    st.text_area("Symptoms", symptoms, height=150)
-
-    with st.spinner("Fetching treatments..."):
-        treatments = send_treatment_query(disease)
-
-    st.subheader("💊 Treatment Recommendations")
-    st.text_area("Treatments", treatments, height=150)
-
-st.markdown("---")
-st.caption("Made using Streamlit and FastAPI")
-st.caption("© 2025 Shivansh Tyagi")
-st.caption("All rights reserved.")
+if audio_bytes:
+    # Save recording
+    audio_path = "temp_audio.wav"
+    with open(audio_path, "wb") as f:
+        f.write(audio_bytes)
+    
+    # Display audio
+    st.audio(audio_bytes, format="audio/wav")
+    
+    # Transcribe button
+    if st.button("Transcribe Audio"):
+        with st.spinner("Transcribing..."):
+            transcription = transcribe_audio(audio_path)
+        
+        if transcription.startswith("Error"):
+            st.error(transcription)
+        else:
+            st.subheader("Transcription:")
+            st.write(transcription)
+            
+            # Optional: Save transcription
+            with open("transcription.txt", "w") as f:
+                f.write(transcription)
+            st.download_button(
+                label="Download Transcription",
+                data=transcription,
+                file_name="transcription.txt"
+            )
