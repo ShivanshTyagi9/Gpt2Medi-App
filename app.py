@@ -14,64 +14,61 @@ genai.configure(api_key=st.secrets["GEMINI_API_KEY"])
 def transcribe_audio(audio_path):
     """Send audio to Gemini for transcription"""
     try:
-        # Upload audio file to Gemini
         audio_file = genai.upload_file(audio_path)
-        
-        # Use Gemini Flash model (faster for audio)
         model = genai.GenerativeModel('models/gemini-1.5-flash')
-        
-        response = model.generate_content(
-            [
-                "You are a medical transcription specialist. Transcribe this doctor-patient conversation verbatim with these requirements:",
-                "1. Format as dialogue with 'DOCTOR:' and 'PATIENT:' prefixes",
-                "2. Include all pauses, filler words, and non-verbal cues like [coughs]",
-                "3. Maintain medical terminology accuracy",
-                "4. Add relevant timestamps every 30 seconds",
-                audio_file
-            ]
-        )
+        response = model.generate_content([
+            "Transcribe this doctor-patient conversation verbatim with:\n"
+            "1. 'DOCTOR:' and 'PATIENT:' prefixes\n"
+            "2. Include pauses and non-verbal cues\n"
+            "3. Maintain medical terms accurately",
+            audio_file
+        ])
         return response.text
     except Exception as e:
         return f"Error: {str(e)}"
 
 st.title("🏥 Doctor-Patient Conversation Recorder")
 
-# Session state for recording management
-if 'recording_start' not in st.session_state:
-    st.session_state.recording_start = None
+# Initialize session state
+if 'recording' not in st.session_state:
+    st.session_state.recording = False
 if 'audio_chunks' not in st.session_state:
     st.session_state.audio_chunks = []
+if 'start_time' not in st.session_state:
+    st.session_state.start_time = None
 
 # Recording controls
 col1, col2 = st.columns(2)
 with col1:
-    if st.button("🎤 Start Recording", disabled=st.session_state.recording_start is not None):
-        st.session_state.recording_start = time.time()
+    if st.button("🎤 Start Recording", disabled=st.session_state.recording):
+        st.session_state.recording = True
         st.session_state.audio_chunks = []
-        st.rerun()
+        st.session_state.start_time = time.time()
 
 with col2:
-    if st.button("⏹️ Stop Recording", disabled=st.session_state.recording_start is None):
-        st.session_state.recording_start = None
-        st.rerun()
+    if st.button("⏹️ Stop Recording", disabled=not st.session_state.recording):
+        st.session_state.recording = False
 
-# Recording status and timer
-if st.session_state.recording_start:
-    elapsed = time.time() - st.session_state.recording_start
+# Main recording logic
+if st.session_state.recording:
+    elapsed = time.time() - st.session_state.start_time
     st.write(f"⏱️ Recording: {int(elapsed)} seconds")
     
-    # Record in 30-second chunks to avoid memory issues
-    if int(elapsed) % 30 == 0 and int(elapsed) > 0:
-        st.warning("Saving 30-second chunk...")
-        audio_bytes = audio_recorder(
-            pause_threshold=30.0,
-            key=f"recorder_{int(elapsed)}"
-        )
-        if audio_bytes:
-            st.session_state.audio_chunks.append(audio_bytes)
+    # Continuous recording with pause_threshold
+    audio_bytes = audio_recorder(
+        text=" ",
+        recording_color="#e8b62c",
+        neutral_color="#6aa36f",
+        pause_threshold=1800,  # 30 minutes maximum
+        key="main_recorder"
+    )
+    
+    if audio_bytes:
+        st.session_state.audio_chunks.append(audio_bytes)
+        st.experimental_rerun()
 
-# Process complete recording
-if st.session_state.audio_chunks and st.session_state.recording_start is None:
+# Process after stopping
+if not st.session_state.recording and st.session_state.audio_chunks:
     full_audio = b"".join(st.session_state.audio_chunks)
     audio_path = "consultation.wav"
     
@@ -81,40 +78,17 @@ if st.session_state.audio_chunks and st.session_state.recording_start is None:
     st.audio(full_audio, format="audio/wav")
     
     if st.button("📝 Transcribe Consultation"):
-        with st.spinner("Transcribing... (This may take a few minutes)"):
+        with st.spinner("Transcribing..."):
             transcription = transcribe_audio(audio_path)
         
         if transcription.startswith("Error"):
             st.error(transcription)
         else:
             st.subheader("Medical Transcript")
-            st.markdown(f"```\n{transcription}\n```", unsafe_allow_html=True)
+            st.markdown(f"```\n{transcription}\n```")
             
-            # Save options
-            col1, col2 = st.columns(2)
-            with col1:
-                st.download_button(
-                    label="📥 Download Transcript",
-                    data=transcription,
-                    file_name="medical_transcript.txt",
-                    mime="text/plain"
-                )
-            with col2:
-                if st.button("🗑️ Clear Session"):
-                    st.session_state.audio_chunks = []
-                    st.rerun()
-
-# Instructions
-st.sidebar.markdown("""
-## Instructions
-1. Click **Start Recording** to begin
-2. Speak clearly (doctor and patient)
-3. Click **Stop Recording** when finished
-4. Press **Transcribe** to generate transcript
-
-## Tips for Best Results:
-- Record in a quiet environment
-- Place microphone midway between speakers
-- Speak at normal volume
-- Pause briefly between speakers
-""")
+            st.download_button(
+                label="📥 Download Transcript",
+                data=transcription,
+                file_name="medical_transcript.txt"
+            )
